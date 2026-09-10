@@ -16,6 +16,24 @@ export default function Home(){
  const [atlas,setAtlas]=useState<Atlas|null>(null),[state,setState]=useState(initial),[progress,setProgress]=useState(0),[error,setError]=useState(''),[panel,setPanel]=useState<'layers'|'search'|null>(null),[details,setDetails]=useState(false),[about,setAbout]=useState(false),[query,setQuery]=useState(''),[chosen,setChosen]=useState<Concept|null>(null);
  useEffect(()=>{const abort=new AbortController();setProgress(0);setError('');setAtlas(null);setChosen(null);setDetails(false);setState({...initial,visible:DEFAULT_VISIBLE});fetch('/models/atlas.json',{signal:abort.signal}).then(r=>{if(!r.ok)throw new Error('The anatomy catalogue could not be loaded.');return r.json();}).then(data=>setAtlas(data as Atlas)).catch(e=>{if(e.name!=='AbortError')setError(e.message);});return()=>abort.abort();},[]);
  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='/'&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLTextAreaElement)){e.preventDefault();setPanel('search');setDetails(false);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
+ useEffect(()=>{
+  window.parent.postMessage({type:'atlas-ready'}, '*');
+  const handler = (e: MessageEvent) => {
+    if (!atlas || e.data?.type !== 'select-structures') return;
+    const ids: string[] = e.data.ids || [];
+    const matched = atlas.concepts.filter(c => ids.includes(c.id));
+    if (!matched.length) return;
+    const elements = matched.flatMap(c => c.elements);
+    flushSync(() => {
+      setChosen({id: matched[0].id, name: matched.map(c=>c.name).join(' + '), elements});
+      setState(s=>({...s, selected: elements, isolate:false, rotate:false}));
+      setDetails(true);
+      setPanel(null);
+    });
+  };
+  window.addEventListener('message', handler);
+  return () => window.removeEventListener('message', handler);
+}, [atlas]);
  const parts=useMemo(()=>new Map(atlas?.parts.map(p=>[p.id,p])),[atlas]);
  const counts=useMemo(()=>Object.fromEntries(SYSTEMS.map(s=>[s.id,atlas?.parts.filter(p=>p.system===s.id).length??0])),[atlas]);
  const activeSystems=SYSTEMS.filter(s=>counts[s.id]>0);
